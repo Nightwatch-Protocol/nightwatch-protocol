@@ -1,4 +1,4 @@
-# 🌙 Nightwatch Protocol
+#  Nightwatch Protocol
 
 > A real-time asymmetric multiplayer horror game on a server-authoritative, cloud-deployed microservice backend, with no player acting as host.
 
