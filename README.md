@@ -1,4 +1,4 @@
-#  Nightwatch Protocol
+# 🌙 Nightwatch Protocol
 
 > A real-time asymmetric multiplayer horror game on a server-authoritative, cloud-deployed microservice backend, with no player acting as host.
 
@@ -57,6 +57,57 @@ All services ──► CloudWatch (custom metrics)      Behind one public ALB: /
 
 ## Tech stack
 C# · .NET 9 · ASP.NET Core · Unity 6 · WebSockets · Redis (StackExchange.Redis, Streams) · DynamoDB · Docker · AWS (EC2 ASG, ALB, ECR, ElastiCache, CloudWatch, S3) · Terraform · GitHub Actions · xUnit
+
+## Architecture (as deployed on AWS)
+
+![AWS deployment diagram](docs/images/aws-deployment-diagram.png)
+
+## Results
+
+Load test with **k6**: 120 virtual players doing the full flow (register → login → matchmaking → WebSocket → movement) on **2 Game Service instances**.
+
+| Indicator | Result |
+|---|---|
+| Players connected over WebSocket | 118 / 120, 0 connection failures, 0 WebSocket errors |
+| Successful joins / assignments | 119 / 120 · 118 / 119 |
+| HTTP p95 latency | **177 ms** (target < 1,000 ms) |
+| Match assignment p95 | 13 s (target < 60 s) |
+| Movement commands sent | 36,600 |
+| Messages broadcast to clients | 182,349 |
+| Peak matches per instance | 12 (60 % capacity utilization) |
+| Game Service CPU | ~3 % average, ~6 % peak |
+| Routing / match-creation failures | 0 / 0 |
+
+**4 of 4 quality gates passed** (checks > 95 %, HTTP failures < 1 %, HTTP p95 < 1 s, assignment p95 < 60 s).
+
+<p>
+  <img src="docs/images/load-test-k6-120-players.png" width="48%" alt="k6 results">
+  <img src="docs/images/load-test-cloudwatch-metrics.png" width="48%" alt="CloudWatch metrics during the test">
+</p>
+
+### Observability
+Every service publishes custom metrics to CloudWatch (active matches, capacity utilization, connected WebSockets, queue size, match-creation latency, routing failures), with a dashboard and alarms defined in Terraform.
+
+![CloudWatch dashboard](docs/images/cloudwatch-dashboard.png)
+
+## Design patterns
+
+| Pattern | Where | Purpose |
+|---|---|---|
+| Factory | `GameSessionFactory` | Consistent match creation |
+| Repository | `IUserRepository`, `IGameSessionStore` | Persistence abstraction |
+| Dependency inversion | Service and client interfaces | Decoupling and testability |
+| Cache-aside | `RedisMatchRouteResolver` | Fewer Redis lookups per message |
+| Gateway | Realtime Gateway | One place for WebSocket, JWT and routing |
+| Event-driven | Redis Streams | Match lifecycle events |
+| Background worker | Processors and publishers | Decoupled periodic work |
+| Least-loaded placement | Matchmaking | Spread matches across Game Services |
+
+![Class diagram](docs/images/class-diagram-patterns.png)
+
+## Trade-offs and future work
+- **Trade-offs:** two base Game Service instances raise cost but reduce peak risk · scale-out takes ~5 min · Matchmaking uses synchronous Redis calls · Gateway has limited test coverage · the environment uses HTTP/WS without TLS
+- **Next:** async Redis operations · separate stream consumers · faster EC2 start-up · more Gateway tests · HTTPS/WSS · private subnets for compute · validate capacity with 3 instances
 
 ## Project status
 
